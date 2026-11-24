@@ -31,7 +31,14 @@ APKSIGNER = os.path.join(BUILD_TOOLS, 'apksigner')
 
 OUT = os.path.join(HERE, 'apk')
 WORK = os.path.join(HERE, '.build')
-KEYSTORE = os.path.join(HERE, 'release.keystore')
+_KEYSTORE_CANDIDATES = [
+    os.environ.get('BYPASS_KEYSTORE') or '',
+    os.path.join(HERE, 'release.keystore'),
+    os.path.join(HERE, '..', 'keys', 'bypass.keystore'),
+    '/workspace/project/keys/bypass.keystore',
+]
+KEYSTORE = next((path for path in _KEYSTORE_CANDIDATES if path and os.path.exists(path)),
+                os.path.join(HERE, 'release.keystore'))
 
 
 def run(cmd):
