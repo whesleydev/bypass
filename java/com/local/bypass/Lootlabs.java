@@ -88,6 +88,7 @@ final class Lootlabs {
 
     private static final class Handle {
         private volatile String token;
+        volatile boolean resolved;
 
         void submit(String value) {
             token = value;
@@ -281,7 +282,8 @@ final class Lootlabs {
             String token = handle.take();
             if (token != null) {
                 listener.onStatus("validando captcha…");
-                verifyCaptcha(syncer, captchaUrid, captchaCat, captchaTid, token);
+                verifyAsync(handle, listener, syncer, captchaUrid, captchaCat, captchaTid,
+                        token, jar, origin);
             }
 
             String message = socket.read(1000);
@@ -294,6 +296,7 @@ final class Lootlabs {
                 return;
             }
             if (message.startsWith("r:")) {
+                handle.resolved = true;
                 String payloadText = filterPrintable(message.substring(2).trim());
                 String result = payloadText.startsWith("http")
                         ? payloadText : xorDecode(payloadText);
@@ -310,22 +313,54 @@ final class Lootlabs {
         listener.onError("tempo esgotado esperando o destino");
     }
 
-    private static void verifyCaptcha(String syncer, String urid, int cat, String tid,
-                                      String token) {
+    private static void verifyAsync(final Handle handle, final Listener listener,
+                                    final String syncer, final String urid, final int cat,
+                                    final String tid, final String token,
+                                    final CookieJar jar, final String origin) {
+        Thread worker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String outcome = verifyCaptcha(syncer, urid, cat, tid, token, jar, origin);
+                listener.onStatus("verify " + outcome);
+                if (outcome.startsWith("200") && !handle.resolved) {
+                    try {
+                        Thread.sleep(7000L);
+                    } catch (InterruptedException ignored) {
+                    }
+                    if (!handle.resolved) {
+                        String retry = verifyCaptcha(syncer, urid, cat, tid, token, jar, origin);
+                        listener.onStatus("verify " + retry + " (retry)");
+                    }
+                }
+            }
+        }, "captcha-verify");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private static String verifyCaptcha(String syncer, String urid, int cat, String tid,
+                                        String token, CookieJar jar, String origin) {
         try {
             JSONObject body = new JSONObject();
             body.put("urid", urid);
             body.put("token", token);
-            Map<String, String> headers = new HashMap<>();
-            headers.put("User-Agent", UA);
-            headers.put("Accept", "*/*");
-            headers.put("Content-Type", "application/json");
-            headers.put("Origin", "https://" + syncer);
-            headers.put("Referer", "https://" + syncer + "/captcha?urid=" + urid);
-            post("https://" + syncer + "/captcha/verify", body.toString(), headers, null);
-            get("https://" + syncer + "/td?ac=captcha&urid=" + urid + "&=&cat=" + cat
-                    + "&tid=" + tid, headers, null);
-        } catch (Exception ignored) {
+
+            Map<String, String> verifyHeaders = headers(jar, origin, "application/json");
+            verifyHeaders.put("Accept", "*/*");
+            verifyHeaders.put("Referer", origin + "/captcha?urid=" + urid);
+            Response verify = post(origin + "/captcha/verify", body.toString(), verifyHeaders, jar);
+
+            Map<String, String> doneHeaders = headers(jar, origin, null);
+            doneHeaders.put("Referer", origin + "/captcha?urid=" + urid);
+            get(origin + "/td?ac=captcha&urid=" + urid + "&=&cat=" + cat + "&tid=" + tid,
+                    doneHeaders, jar);
+            String snippet = verify.body == null ? "" : verify.body.trim();
+            if (snippet.length() > 90) {
+                snippet = snippet.substring(0, 90);
+            }
+            return verify.code + (snippet.isEmpty() ? "" : " " + snippet.replace('\n', ' '));
+        } catch (Exception error) {
+            return "-1 " + error.getClass().getSimpleName();
         }
     }
 
@@ -334,7 +369,7 @@ final class Lootlabs {
     private static final class CookieJar {
         final Map<String, String> cookies = new HashMap<>();
 
-        void store(Response response) {
+        synchronized void store(Response response) {
             List<String> raw = response.setCookies;
             if (raw == null) {
                 return;
@@ -349,7 +384,7 @@ final class Lootlabs {
             }
         }
 
-        String header() {
+        synchronized String header() {
             if (cookies.isEmpty()) {
                 return null;
             }
