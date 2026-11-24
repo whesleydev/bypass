@@ -46,6 +46,18 @@ python3 build.py 3.4
 
 Requisitos: JDK 17, build-tools android-14, `android.jar` API 34.
 
+O APK sai em `apk/`. A pasta fica versionada (`.gitkeep`); os artefatos não.
+
+```
+bypass/
+  AndroidManifest.xml
+  build.py
+  java/
+  res/
+  apk/          <- APK gerado aqui
+  version.txt
+```
+
 ## Assinatura
 
 O keystore de release **nao** esta neste repositorio. Gere o seu:

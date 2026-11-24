@@ -1,5 +1,6 @@
-build/
 *.apk
+.build/
+!apk/.gitkeep
 *.keystore
 *.jks
 local.properties

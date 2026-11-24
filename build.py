@@ -29,7 +29,8 @@ D8 = os.path.join(BUILD_TOOLS, 'd8')
 ZIPALIGN = os.path.join(BUILD_TOOLS, 'zipalign')
 APKSIGNER = os.path.join(BUILD_TOOLS, 'apksigner')
 
-OUT = os.path.join(HERE, 'build')
+OUT = os.path.join(HERE, 'apk')
+WORK = os.path.join(HERE, '.build')
 KEYSTORE = os.path.join(HERE, 'release.keystore')
 
 
@@ -47,11 +48,11 @@ def run(cmd):
 
 
 def main():
-    shutil.rmtree(OUT, ignore_errors=True)
-    os.makedirs(OUT)
-    compiled = os.path.join(OUT, 'res.zip')
-    classes = os.path.join(OUT, 'classes')
-    dex_dir = os.path.join(OUT, 'dex')
+    os.makedirs(OUT, exist_ok=True)
+    shutil.rmtree(WORK, ignore_errors=True)
+    compiled = os.path.join(WORK, 'res.zip')
+    classes = os.path.join(WORK, 'classes')
+    dex_dir = os.path.join(WORK, 'dex')
     os.makedirs(classes)
     os.makedirs(dex_dir)
 
@@ -59,8 +60,8 @@ def main():
     run([AAPT2, 'compile', '--dir', os.path.join(HERE, 'res'), '-o', compiled])
 
     print('[2/6] linkando base')
-    unsigned = os.path.join(OUT, 'base-unsigned.apk')
-    generated = os.path.join(OUT, 'gen')
+    unsigned = os.path.join(WORK, 'base-unsigned.apk')
+    generated = os.path.join(WORK, 'gen')
     os.makedirs(generated)
     run([AAPT2, 'link', '-o', unsigned, '-I', ANDROID_JAR,
          '--manifest', os.path.join(HERE, 'AndroidManifest.xml'),
@@ -87,11 +88,11 @@ def main():
              '-storepass', 'bypass123', '-keypass', 'bypass123',
              '-dname', 'CN=Bypass, O=Local, C=BR'])
 
-    aligned = os.path.join(OUT, 'aligned.apk')
+    aligned = os.path.join(WORK, 'aligned.apk')
     run([ZIPALIGN, '-f', '4', unsigned, aligned])
 
     print('[6/6] assinando')
-    final = os.path.join(HERE, 'Bypass-3.3.apk')
+    final = os.path.join(OUT, 'Bypass-3.3.apk')
     run([APKSIGNER, 'sign', '--ks', KEYSTORE, '--ks-pass', 'pass:bypass123',
          '--key-pass', 'pass:bypass123', '--ks-key-alias', 'release',
          '--min-sdk-version', '24', '--v4-signing-enabled', 'false',
