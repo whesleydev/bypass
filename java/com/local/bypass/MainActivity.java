@@ -594,7 +594,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showResult(final Resolver.Result result) {
-        if (!result.ok && result.needsJs) {
+        if (!result.ok) {
             runWebGate(result);
             return;
         }

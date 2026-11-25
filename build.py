@@ -73,7 +73,7 @@ def main():
     run([AAPT2, 'link', '-o', unsigned, '-I', ANDROID_JAR,
          '--manifest', os.path.join(HERE, 'AndroidManifest.xml'),
          '-R', compiled, '--min-sdk-version', '24', '--target-sdk-version', '34',
-         '--version-code', '18', '--version-name', '3.4', '--auto-add-overlay',
+         '--version-code', '19', '--version-name', '3.5', '--auto-add-overlay',
          '--java', generated])
 
     print('[3/6] compilando java')
@@ -99,7 +99,7 @@ def main():
     run([ZIPALIGN, '-f', '4', unsigned, aligned])
 
     print('[6/6] assinando')
-    final = os.path.join(OUT, 'Bypass-3.4.apk')
+    final = os.path.join(OUT, 'Bypass-3.5.apk')
     run([APKSIGNER, 'sign', '--ks', KEYSTORE, '--ks-pass', 'pass:bypass123',
          '--key-pass', 'pass:bypass123', '--ks-key-alias', 'release',
          '--min-sdk-version', '24', '--v4-signing-enabled', 'false',

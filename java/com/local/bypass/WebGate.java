@@ -28,9 +28,9 @@ final class WebGate {
         void onError(String message);
     }
 
-    private static final long HARD_TIMEOUT_MS = 38_000L;
-    private static final long TICK_MS = 900L;
-    private static final int MAX_TICKS = 42;
+    private static final long HARD_TIMEOUT_MS = 80_000L;
+    private static final long TICK_MS = 800L;
+    private static final int MAX_TICKS = 95;
 
     private static final String[] AD_HOSTS = {
             "doubleclick.net", "googlesyndication.com", "adservice.google.com",
@@ -42,27 +42,76 @@ final class WebGate {
             "profitablecpmrate.com", "a-ads.com", "bitmedia.io", "cointraffic.io"
     };
 
-    private static final String CLICK_JS =
-            "(function(){"
-                    + "try{"
-                    + "var re=/(continuar|continue|prosseguir|prosiga|avancar|avançar|next|"
-                    + "proxima|próxima|get\\s*link|obter\\s*link|pegar\\s*link|download|baixar|"
-                    + "unlock|desbloquear|skip|pular|clique|click|entrar)/i;"
-                    + "var nodes=document.querySelectorAll('a,button,[role=button],"
-                    + "div[onclick],span[onclick],input[type=submit]');"
-                    + "for(var i=0;i<nodes.length;i++){"
-                    + "var el=nodes[i];"
-                    + "var t=(el.innerText||el.textContent||el.value||'').trim();"
-                    + "if(!t||t.length>60)continue;"
-                    + "if(!re.test(t))continue;"
-                    + "var box=el.getBoundingClientRect();"
-                    + "if(box.width<1||box.height<1)continue;"
-                    + "try{el.scrollIntoView({block:'center'});}catch(e){}"
-                    + "try{el.click();}catch(e){}"
-                    + "}"
-                    + "}catch(e){}"
-                    + "return location.href;"
-                    + "})()";
+    private static final String DRIVER_JS = String.join("\n", new String[]{
+            "(function(){",
+            "var out={clicked:0};",
+            "try{",
+            "  try{",
+            "    if(localStorage.getItem('xx_t'))localStorage.setItem('xx_t','2');",
+            "    if(localStorage.getItem('fs_countdown'))localStorage.setItem('fs_countdown','1');",
+            "    localStorage.removeItem('ttl');",
+            "  }catch(e){}",
+            "  function flip(){",
+            "    try{",
+            "      var proto=Object.getPrototypeOf(document);",
+            "      Object.defineProperty(proto,'visibilityState',{configurable:true,",
+            "        get:function(){return 'hidden';}});",
+            "      document.dispatchEvent(new Event('visibilitychange'));",
+            "      setTimeout(function(){",
+            "        Object.defineProperty(proto,'visibilityState',{configurable:true,",
+            "          get:function(){return 'visible';}});",
+            "        document.dispatchEvent(new Event('visibilitychange'));",
+            "      },150);",
+            "    }catch(e){}",
+            "  }",
+            "  if(!window.__bypassFlip){window.__bypassFlip=1;flip();}",
+            "  function fold(text){",
+            "    var raw='';",
+            "    for(var i=0;i<text.length;i++){",
+            "      var c=text.charCodeAt(i);",
+            "      if(c>=0x1D400&&c<=0x1D6A3){var k=(c-0x1D400)%52;",
+            "        raw+=String.fromCharCode(k<26?65+k:65+k-26);continue;}",
+            "      if(c>=0x0400&&c<=0x04FF){",
+            "        var m={0x410:'A',0x411:'B',0x412:'B',0x415:'E',0x41A:'K',0x41C:'M',",
+            "          0x41D:'H',0x41E:'O',0x420:'P',0x421:'C',0x422:'T',0x425:'X',",
+            "          0x406:'I',0x408:'J',0x40D:'D'};",
+            "        if(m[c])raw+=m[c];continue;}",
+            "      if(c===0x200B||c===0x200C||c===0x200D||c===0xFEFF||c===0x00A0)continue;",
+            "      raw+=text.charAt(i);",
+            "    }",
+            "    try{raw=raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'');}catch(e){}",
+            "    return raw.toUpperCase()",
+            "      .replace(/0/g,'O').replace(/[1!|]/g,'I').replace(/3/g,'E')",
+            "      .replace(/[4@]/g,'A').replace(/[5$]/g,'S').replace(/7/g,'T')",
+            "      .replace(/9/g,'G').replace(/8/g,'B').replace(/&/g,'E')",
+            "      .replace(/[^A-Z]/g,'');",
+            "  }",
+            "  var words=['CONTINUAR','CONTINUE','PROSSEGUIR','PROSSIGA','AVANCAR','NEXT',",
+            "    'FINALIZAR','CLIQUE','CLICK','ETAPA','AQUI','IRPARA','DESBLOQUEAR',",
+            "    'UNLOCK','GETLINK','OBTERLINK','PEGARLINK','DOWNLOAD','BAIXAR','SKIP',",
+            "    'PULAR','FECHAR','CLOSE','GERARLINK','ACESSAR','ENTRAR'];",
+            "  var nodes=document.querySelectorAll('a,button,[role=button],div[onclick],",
+            "    span[onclick],input[type=submit]');",
+            "  for(var n=0;n<nodes.length&&out.clicked<2;n++){",
+            "    var el=nodes[n];",
+            "    var label=el.innerText||el.textContent||el.value||'';",
+            "    if(!label||label.length>80)continue;",
+            "    var folded=fold(label);",
+            "    if(!folded)continue;",
+            "    var hit=false;",
+            "    for(var w=0;w<words.length;w++){if(folded.indexOf(words[w])>=0){hit=true;break;}}",
+            "    if(!hit)continue;",
+            "    if(el.disabled)continue;",
+            "    var box=el.getBoundingClientRect();",
+            "    if(box.width<1||box.height<1)continue;",
+            "    try{el.scrollIntoView({block:'center'});}catch(e){}",
+            "    try{el.click();out.clicked++;}catch(e){}",
+            "  }",
+            "  out.url=location.href;",
+            "  out.body=(document.body?document.body.innerText:'').slice(0,400);",
+            "}catch(e){out.err=String(e);}",
+            "return JSON.stringify(out);",
+            "})()"});
 
     private WebGate() {
     }
@@ -87,6 +136,8 @@ final class WebGate {
         private boolean done;
         private int ticks;
         private int errors;
+        private int clickedTotal;
+        private boolean sawGate;
 
         Runner(Activity activity, String url, Listener listener) {
             this.activity = activity;
@@ -188,11 +239,29 @@ final class WebGate {
                 return;
             }
             try {
-                web.evaluateJavascript(CLICK_JS, value -> {
-                    String current = unquote(value);
+                web.evaluateJavascript(DRIVER_JS, value -> {
+                    String raw = unquote(value);
+                    if (raw == null || raw.isEmpty()) {
+                        return;
+                    }
+                    String current = null;
+                    try {
+                        org.json.JSONObject info = new org.json.JSONObject(raw);
+                        current = info.optString("url", null);
+                        if (info.optInt("clicked", 0) > 0) {
+                            sawGate = true;
+                            clickedTotal += info.optInt("clicked", 0);
+                        }
+                    } catch (Exception parse) {
+                        current = raw;
+                    }
                     if (current != null && !current.isEmpty()
                             && !hostOf(current).equals(startHost)) {
                         finish(current, null);
+                        return;
+                    }
+                    if (!sawGate && ticks > 16) {
+                        finish(null, "sem gate nesta pagina");
                     }
                 });
             } catch (Exception ignored) {
