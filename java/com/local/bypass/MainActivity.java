@@ -71,6 +71,7 @@ public final class MainActivity extends Activity {
     private TextView bypassButton;
     private Shimmer shimmer;
     private String currentResult;
+    private String lastInput;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -461,6 +462,7 @@ public final class MainActivity extends Activity {
             return;
         }
         input.setText(link);
+        lastInput = link;
         setBusy(true);
         resultCard.animate().cancel();
         resultCard.setVisibility(View.INVISIBLE);
@@ -636,11 +638,38 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        if (sameLink(result.url, lastInput)) {
+            setStatus("link sem gate · já é o destino", MUTED);
+            resultUrl.setText(result.url);
+            resultMeta.setText("nenhum gate encontrado nesta url");
+            revealCard();
+            return;
+        }
+
         setStatus("pronto em " + result.millis + " ms · "
                 + (result.chain.size() - 1) + " saltos", MUTED);
         resultUrl.setText(result.url);
         resultMeta.setText(trace(result.chain));
         revealCard();
+    }
+
+    private static boolean sameLink(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return trim(a).equals(trim(b));
+    }
+
+    private static String trim(String url) {
+        String value = url.trim();
+        int hash = value.indexOf('#');
+        if (hash > 0) {
+            value = value.substring(0, hash);
+        }
+        while (value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return value;
     }
 
     private void shake(View view) {
