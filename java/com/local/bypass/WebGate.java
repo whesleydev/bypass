@@ -42,6 +42,27 @@ final class WebGate {
             "profitablecpmrate.com", "a-ads.com", "bitmedia.io", "cointraffic.io"
     };
 
+    private static final String NET_JS = String.join("\n", new String[]{
+            "(function(){",
+            "if(window.__bpyNet)return;window.__bpyNet=1;window.__bpyUrls=[];",
+            "function scan(t){try{var m=String(t).match(/https?:\\/\\/[^\\s\"'\\\\<>)\\]}]+/g)||[];",
+            "for(var i=0;i<m.length;i++){var u=m[i].replace(/[.,;]+$/,'');",
+            "if(u.length<12)continue;",
+            "if(window.__bpyUrls.indexOf(u)<0&&window.__bpyUrls.length<200)window.__bpyUrls.push(u);}}catch(e){}}",
+            "try{var of=window.fetch;if(of){window.fetch=function(){var p=of.apply(this,arguments);",
+            "try{p.then(function(r){try{r.clone().text().then(scan);}catch(e){}});}catch(e){}return p;};}}catch(e){}",
+            "try{var XO=XMLHttpRequest.prototype.open,XS=XMLHttpRequest.prototype.send;",
+            "XMLHttpRequest.prototype.open=function(m,u){this.__bpyU=u;return XO.apply(this,arguments);};",
+            "XMLHttpRequest.prototype.send=function(){var x=this;",
+            "x.addEventListener('load',function(){try{scan(x.responseText);}catch(e){}});",
+            "return XS.apply(this,arguments);};}catch(e){}",
+            "try{var OW=window.WebSocket;if(OW){window.WebSocket=function(u,p){var w=p?new OW(u,p):new OW(u);",
+            "w.addEventListener('message',function(e){scan(e.data);});return w;};",
+            "window.WebSocket.prototype=OW.prototype;}}catch(e){}",
+            "try{var op=history.pushState;history.pushState=function(){scan(location.href);",
+            "return op.apply(this,arguments);};}catch(e){}",
+            "})()"});
+
     private static final String DRIVER_JS = String.join("\n", new String[]{
             "(function(){",
             "var out={clicked:0,dialog:0};",
@@ -90,8 +111,7 @@ final class WebGate {
             "    'FINALIZAR','CLIQUE','CLICK','ETAPA','AQUI','IRPARA','DESBLOQUEAR',",
             "    'UNLOCK','GETLINK','OBTERLINK','PEGARLINK','DOWNLOAD','BAIXAR','SKIP',",
             "    'PULAR','FECHAR','CLOSE','GERARLINK','ACESSAR','ENTRAR'];",
-            "  var nodes=document.querySelectorAll('a,button,[role=button],div[onclick],",
-            "    span[onclick],input[type=submit]');",
+            "  var nodes=document.querySelectorAll('a,button,[role=button],div[onclick],span[onclick],input[type=submit]');",
             "  var now=Date.now();",
             "  for(var n=0;n<nodes.length&&out.clicked<2;n++){",
             "    var el=nodes[n];",
@@ -111,6 +131,7 @@ final class WebGate {
             "    try{el.click();out.clicked++;}catch(e){}",
             "  }",
             "  out.dialog=document.querySelector('[data-slot=\"dialog-content\"],[role=\"dialog\"]')?1:0;",
+            "  out.net=(window.__bpyUrls||[]).slice(-40);",
             "  out.url=location.href;",
             "}catch(e){out.err=String(e);}",
             "return JSON.stringify(out);",
@@ -190,6 +211,15 @@ final class WebGate {
                 }
 
                 @Override
+                public void onPageStarted(WebView view, String target, android.graphics.Bitmap icon) {
+                    try {
+                        view.evaluateJavascript(NET_JS, null);
+                    } catch (Exception ignored) {
+                        // proxima pagina
+                    }
+                }
+
+                @Override
                 public void onPageFinished(WebView view, String loaded) {
                     ticks = 0;
                     if (!done) {
@@ -248,6 +278,7 @@ final class WebGate {
                         return;
                     }
                     String current = null;
+                    String captured = null;
                     try {
                         org.json.JSONObject info = new org.json.JSONObject(raw);
                         current = info.optString("url", null);
@@ -255,8 +286,17 @@ final class WebGate {
                             sawGate = true;
                             clickedTotal += info.optInt("clicked", 0);
                         }
+                        org.json.JSONArray net = info.optJSONArray("net");
+                        if (net != null && net.length() > 0) {
+                            sawGate = true;
+                        }
+                        captured = bestCaptured(net);
                     } catch (Exception parse) {
                         current = raw;
+                    }
+                    if (captured != null) {
+                        finish(captured, null);
+                        return;
                     }
                     if (current != null && !current.isEmpty()
                             && !hostOf(current).equals(startHost)) {
@@ -273,6 +313,31 @@ final class WebGate {
             if (!done) {
                 handler.postDelayed(this, TICK_MS);
             }
+        }
+
+        private String bestCaptured(org.json.JSONArray net) {
+            if (net == null) {
+                return null;
+            }
+            for (int index = net.length() - 1; index >= 0; index--) {
+                String candidate = net.optString(index, null);
+                if (candidate == null || !candidate.startsWith("http")) {
+                    continue;
+                }
+                String candidateHost = hostOf(candidate);
+                if (candidateHost.isEmpty() || isAdHost(candidateHost)) {
+                    continue;
+                }
+                if (candidateHost.equals(startHost) || isSameSite(candidateHost, startHost)) {
+                    continue;
+                }
+                if (candidate.contains("/favicon") || candidate.contains(".png")
+                        || candidate.contains(".jpg") || candidate.contains(".css")) {
+                    continue;
+                }
+                return candidate;
+            }
+            return null;
         }
 
         private boolean handle(String target) {
