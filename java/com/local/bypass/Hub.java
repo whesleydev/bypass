@@ -27,6 +27,7 @@ final class Hub {
             });
 
     private static final List<Module> MODULES = Arrays.<Module>asList(
+            new AlphaRedeModule(),
             new CrawlerModule(),
             new WpProbe(),
             new SpaProbe(),
