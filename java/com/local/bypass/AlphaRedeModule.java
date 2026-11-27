@@ -188,6 +188,9 @@ final class AlphaRedeModule implements Module {
                 }
             }
         }
+        if (mustOwnPage) {
+            return null;
+        }
         return fallback == null ? null : new Walk(fallback, chain);
     }
 
