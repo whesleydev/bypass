@@ -2,16 +2,10 @@ package com.local.bypass;
 
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Gate da plataforma Alpha Rede (Next.js + tRPC + Prisma). A cadeia inteira e
@@ -50,7 +44,7 @@ final class AlphaRedeModule implements Module {
         if (origin == null) {
             return null;
         }
-        Response probe = get(origin + "/api/session-info", null, 1500);
+        Http.Response probe = Http.get(origin + "/api/session-info", null, 1500);
         if (probe == null || probe.body == null || !probe.body.contains("hasSession")) {
             return null;
         }
@@ -82,11 +76,11 @@ final class AlphaRedeModule implements Module {
         if (url.indexOf("?t=") < 0 && url.indexOf("&t=") < 0) {
             return null;
         }
-        Response probe = get(url, null, TIMEOUT_MS);
+        Http.Response probe = Http.get(url, null, TIMEOUT_MS);
         if (probe == null || probe.cookies.isEmpty()) {
             return null;
         }
-        Session session = info(origin, join(probe.cookies));
+        Session session = info(origin, probe.cookieHeader());
         if (session == null) {
             return null;
         }
@@ -95,8 +89,8 @@ final class AlphaRedeModule implements Module {
     }
 
     private static Session open(String url, String origin, int linkId) {
-        Response created = post(origin + "/api/trpc/linkSession.create",
-                "{\"json\":{\"linkId\":" + linkId + "}}", null);
+        Http.Response created = Http.post(origin + "/api/trpc/linkSession.create",
+                "{\"json\":{\"linkId\":" + linkId + "}}", null, TIMEOUT_MS);
         if (created == null || created.body == null) {
             return null;
         }
@@ -111,12 +105,12 @@ final class AlphaRedeModule implements Module {
         if (token == null || token.isEmpty()) {
             return null;
         }
-        String entry = stripToken(url) + "?t=" + enc(token) + "&i=1";
-        Response seeded = get(entry, null, TIMEOUT_MS);
+        String entry = stripToken(url) + "?t=" + Http.enc(token) + "&i=1";
+        Http.Response seeded = Http.get(entry, null, TIMEOUT_MS);
         if (seeded == null || seeded.cookies.isEmpty()) {
             return null;
         }
-        return info(origin, join(seeded.cookies));
+        return info(origin, seeded.cookieHeader());
     }
 
     private static String stripToken(String url) {
@@ -125,7 +119,7 @@ final class AlphaRedeModule implements Module {
     }
 
     private static Session info(String origin, String cookie) {
-        Response response = get(origin + "/api/session-info", cookie, TIMEOUT_MS);
+        Http.Response response = Http.get(origin + "/api/session-info", cookie, TIMEOUT_MS);
         if (response == null || response.body == null) {
             return null;
         }
@@ -158,8 +152,8 @@ final class AlphaRedeModule implements Module {
             }
             String input = "{\"json\":{\"token\":\"" + session.token + "\",\"progress\":"
                     + progress + ",\"stageId\":" + session.stageId + "}}";
-            String url = origin + "/api/trpc/linkSession.nextStage?input=" + enc(input);
-            Response response = get(url, session.cookie, TIMEOUT_MS);
+            String url = origin + "/api/trpc/linkSession.nextStage?input=" + Http.enc(input);
+            Http.Response response = Http.get(url, session.cookie, TIMEOUT_MS);
             if (response == null || response.body == null) {
                 break;
             }
@@ -194,13 +188,6 @@ final class AlphaRedeModule implements Module {
         return fallback == null ? null : new Walk(fallback, chain);
     }
 
-    private static String enc(String value) {
-        try {
-            return URLEncoder.encode(value, "UTF-8");
-        } catch (Exception exc) {
-            return value;
-        }
-    }
 
     private static String trim(String url) {
         String value = url.trim();
@@ -214,21 +201,6 @@ final class AlphaRedeModule implements Module {
         return value.toLowerCase(Locale.ROOT);
     }
 
-    private static String join(List<String> cookies) {
-        StringBuilder builder = new StringBuilder();
-        for (String cookie : cookies) {
-            int end = cookie.indexOf(';');
-            String pair = end < 0 ? cookie : cookie.substring(0, end);
-            if (pair.indexOf('=') <= 0) {
-                continue;
-            }
-            if (builder.length() > 0) {
-                builder.append("; ");
-            }
-            builder.append(pair);
-        }
-        return builder.toString();
-    }
 
     private static String origin(String url) {
         try {
@@ -263,90 +235,8 @@ final class AlphaRedeModule implements Module {
         }
     }
 
-    private static final class Response {
-        final int code;
-        final String body;
-        final List<String> cookies;
 
-        Response(int code, String body, List<String> cookies) {
-            this.code = code;
-            this.body = body;
-            this.cookies = cookies;
-        }
-    }
 
-    private static Response get(String url, String cookie, int timeout) {
-        return call(url, null, cookie, timeout);
-    }
 
-    private static Response post(String url, String payload, String cookie) {
-        return call(url, payload, cookie, TIMEOUT_MS);
-    }
 
-    private static Response call(String url, String payload, String cookie, int timeout) {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(timeout);
-            connection.setReadTimeout(timeout);
-            connection.setRequestProperty("User-Agent", Resolver.UA_MOBILE);
-            connection.setRequestProperty("Accept", "application/json, text/html, */*");
-            connection.setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9");
-            if (cookie != null && !cookie.isEmpty()) {
-                connection.setRequestProperty("Cookie", cookie);
-            }
-            if (payload != null) {
-                connection.setDoOutput(true);
-                connection.setRequestMethod("POST");
-                connection.setRequestProperty("Content-Type", "application/json");
-                OutputStream out = connection.getOutputStream();
-                out.write(payload.getBytes("UTF-8"));
-                out.close();
-            }
-            int code = connection.getResponseCode();
-            List<String> cookies = new ArrayList<>();
-            for (Map.Entry<String, List<String>> header : connection.getHeaderFields().entrySet()) {
-                if (header.getKey() != null && header.getKey().equalsIgnoreCase("Set-Cookie")) {
-                    for (String value : header.getValue()) {
-                        cookies.add(value);
-                    }
-                }
-            }
-            InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            return new Response(code, read(stream), cookies);
-        } catch (Exception exc) {
-            return null;
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
-
-    private static String read(InputStream stream) {
-        if (stream == null) {
-            return "";
-        }
-        try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int read;
-            while ((read = stream.read(chunk)) > 0) {
-                buffer.write(chunk, 0, read);
-                if (buffer.size() > 400_000) {
-                    break;
-                }
-            }
-            return buffer.toString("UTF-8");
-        } catch (Exception exc) {
-            return "";
-        } finally {
-            try {
-                stream.close();
-            } catch (Exception ignored) {
-                // sem stream
-            }
-        }
-    }
 }
